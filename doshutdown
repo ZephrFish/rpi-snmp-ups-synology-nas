@@ -1,0 +1,88 @@
+#!/bin/sh
+#
+# APC UPS Shutdown Script
+# Triggered by apcupsd when battery reaches low threshold
+# Can notify Synology NAS to initiate graceful shutdown
+#
+
+LOG_FILE="/var/log/apcupsd-events.log"
+
+log_event() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+log_event "=== UPS SHUTDOWN EVENT TRIGGERED ==="
+
+# Get current UPS status
+BATTERY_CHARGE=$(apcaccess -u -p BCHARGE 2>/dev/null || echo "unknown")
+TIME_LEFT=$(apcaccess -u -p TIMELEFT 2>/dev/null || echo "unknown")
+UPS_STATUS=$(apcaccess -u -p STATUS 2>/dev/null || echo "unknown")
+
+log_event "Battery: ${BATTERY_CHARGE}% | Runtime: ${TIME_LEFT} minutes | Status: ${UPS_STATUS}"
+
+# Method 1: Synology NAS Shutdown via SNMP Trap
+# This is the RECOMMENDED method for Synology NAS
+if [ -n "$SYNOLOGY_NAS_IP" ]; then
+    log_event "Sending SNMP trap to Synology NAS at $SYNOLOGY_NAS_IP"
+
+    # Send SNMP trap to notify NAS of power failure
+    # Synology listens for power failure notifications
+    if command -v snmptrap >/dev/null 2>&1; then
+        # SNMP v2c trap for power failure
+        snmptrap -v 2c -c "$SNMP_COMMUNITY_PUBLIC" "$SYNOLOGY_NAS_IP" '' \
+            .1.3.6.1.6.3.1.1.5.3 \
+            .1.3.6.1.2.1.1.3.0 int 0 \
+            .1.3.6.1.2.1.1.1.0 s "UPS" \
+            .1.3.6.1.4.1.318.1.1.1.2.2.1.0 i "${BATTERY_CHARGE}" \
+            .1.3.6.1.4.1.318.1.1.1.2.2.3.0 i "${TIME_LEFT}" 2>&1 | tee -a "$LOG_FILE"
+
+        # Also try APC-specific enterprise OID for power off
+        snmptrap -v 2c -c "$SNMP_COMMUNITY_PUBLIC" "$SYNOLOGY_NAS_IP" '' \
+            .1.3.6.1.4.1.318.0.9 \
+            .1.3.6.1.2.1.1.3.0 int 0 \
+            .1.3.6.1.2.1.1.1.0 s "UPS Communications Lost" \
+            .1.3.6.1.4.1.318.1.1.1.2.2.1.0 i "${BATTERY_CHARGE}" 2>&1 | tee -a "$LOG_FILE"
+
+        log_event "SNMP trap sent to $SYNOLOGY_NAS_IP"
+    else
+        log_event "ERROR: snmptrap command not available"
+    fi
+fi
+
+# Method 2: SSH Shutdown (fallback for NAS without SNMP configured)
+if [ -n "$NAS_SSH_HOST" ] && [ -n "$NAS_SSH_USER" ]; then
+    log_event "Initiating NAS shutdown via SSH to $NAS_SSH_HOST"
+
+    if [ -n "$NAS_SSH_KEY" ] && [ -f "$NAS_SSH_KEY" ]; then
+        ssh -i "$NAS_SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            "$NAS_SSH_USER@$NAS_SSH_HOST" "sudo -i synosystemctl poweroff" 2>&1 | tee -a "$LOG_FILE"
+    elif [ -n "$NAS_SSH_PASSWORD" ]; then
+        if command -v sshpass >/dev/null 2>&1; then
+            sshpass -p "$NAS_SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+                "$NAS_SSH_USER@$NAS_SSH_HOST" "sudo -i synosystemctl poweroff" 2>&1 | tee -a "$LOG_FILE"
+        else
+            log_event "ERROR: sshpass not installed for password auth"
+        fi
+    else
+        # Try passwordless key-based auth
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            "$NAS_SSH_USER@$NAS_SSH_HOST" "sudo -i synosystemctl poweroff" 2>&1 | tee -a "$LOG_FILE"
+    fi
+fi
+
+# Method 3: Webhook notification (for Home Assistant, etc.)
+if [ -n "$SHUTDOWN_WEBHOOK" ]; then
+    log_event "Calling shutdown webhook: $SHUTDOWN_WEBHOOK"
+    wget -q -O- "$SHUTDOWN_WEBHOOK" >> "$LOG_FILE" 2>&1 || curl -s "$SHUTDOWN_WEBHOOK" >> "$LOG_FILE" 2>&1
+fi
+
+# Method 4: Wake-on-LAN after power restoration (optional)
+if [ -n "$NAS_MAC_ADDRESS" ] && [ -n "$BROADCAST_IP" ]; then
+    # Store for potential wake-on-power-restore script
+    echo "$NAS_MAC_ADDRESS" > /tmp/nas_mac_to_wake
+    echo "$BROADCAST_IP" > /tmp/broadcast_ip
+    log_event "NAS MAC stored for wake-on-LAN: $NAS_MAC_ADDRESS"
+fi
+
+log_event "Shutdown script completed"
+exit 0

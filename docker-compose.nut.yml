@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  nut-ups:
+    build:
+      context: .
+      dockerfile: Dockerfile.nut
+    container_name: nut-ups-server
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    ports:
+      - "3493:3493"  # NUT server port
+      - "5000:5000"  # Optional web UI
+      - "161:161/udp"  # SNMP
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb:ro
+      - nut-data:/var/state/nut
+    environment:
+      - TZ=UTC
+
+      # NUT Settings
+      - NUT_LOWBATT=15          # Low battery threshold (%)
+      - NUT_POLLFREQ=5          # Polling frequency (seconds)
+      - UPS_NAME=ups            # UPS identifier
+      - ENABLE_WEBUI=true       # Enable web interface
+
+      # SNMP Settings (for APC OID compatibility)
+      - SNMP_COMMUNITY_RO=public
+      - SNMP_COMMUNITY_RW=private
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  nut-data:
+    driver: local

@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  powerchute-ups:
+    build:
+      context: .
+      dockerfile: Dockerfile.powerchute
+    container_name: powerchute-ups-agent
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    ports:
+      - "3052:3052"  # PowerChute web interface
+      - "161:161/udp"  # SNMP
+    volumes:
+      # Mount USB devices
+      - /dev/bus/usb:/dev/bus/usb:ro
+      # Mount PowerChute RPM (place it in the same directory)
+      - ./pcssagent-1.4.0-301-EN.x86_64.rpm:/tmp/pcssagent.rpm:ro
+      # Persist configuration
+      - powerchute-config:/opt/APC/PowerChuteSerialShutdown
+    environment:
+      - TZ=UTC
+
+      # SNMP Configuration
+      - SNMP_COMMUNITY=public
+
+      # Shutdown Settings
+      - BATTERY_THRESHOLD=15      # Shutdown at 15% battery
+      - SHUTDOWN_DELAY=180         # Wait 180 seconds before shutdown
+
+      # PowerChute Web Interface
+      - WEB_PORT=3052
+
+      # Optional: UPS manufacturer override
+      - UPS_MANUFACTURER=APC
+
+      # Logging
+      - LOG_LEVEL=INFO
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  powerchute-config:
+    driver: local

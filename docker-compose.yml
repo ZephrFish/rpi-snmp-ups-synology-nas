@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  ups-snmp:
+    build: .
+    container_name: ups-snmp-server
+    restart: unless-stopped
+    network_mode: host  # Required for SNMP to work properly
+    privileged: true     # Required for USB device access
+    ports:
+      - "161:161/udp"
+    volumes:
+      # Mount USB devices from host
+      - /dev/bus/usb:/dev/bus/usb:ro
+      # Optional: Mount custom configs
+      # - ./snmpd.conf:/etc/snmp/snmpd.conf:ro
+      # - ./apcupsd.conf:/etc/apcupsd/apcupsd.conf:ro
+    environment:
+      - TZ=UTC
+      # Optional: SNMP community strings (override defaults)
+      - SNMP_COMMUNITY_RO=public
+      - SNMP_COMMUNITY_RW=private
+      - SNMP_COMMUNITY_PUBLIC=public
+
+      # --- BATTERY THRESHOLDS ---
+      # Set the battery level at which NAS should be notified/shutdown
+      # Synology should be configured with a HIGHER value to act first
+      - BATTERYLEVEL=15
+      - MINUTES=5
+
+      # --- NAS SHUTDOWN CONFIGURATION ---
+      # Method 1 (RECOMMENDED): SNMP-based shutdown for Synology NAS
+      # Configure Synology DSM UPS settings to use SNMP and set this to your NAS IP
+      - SYNOLOGY_NAS_IP=192.168.1.100
+
+      # Method 2 (FALLBACK): SSH-based shutdown
+      # - NAS_SSH_HOST=192.168.1.100
+      # - NAS_SSH_USER=admin
+      # - NAS_SSH_PASSWORD=your_password
+      # Or use SSH key:
+      # - NAS_SSH_KEY=/path/to/ssh/key
+
+      # Method 3: Webhook for Home Assistant or other automation
+      # - SHUTDOWN_WEBHOOK=http://homeassistant:8123/api/webhook/ups_shutdown
+
+      # Optional: Wake-on-LAN after power restoration
+      # - NAS_MAC_ADDRESS=00:11:32:XX:XX:XX
+      # - BROADCAST_IP=192.168.1.255
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

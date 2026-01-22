@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  ups-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile.webui
+    container_name: ups-webui-monitor
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    ports:
+      - "5000:5000"  # Web UI
+      - "161:161/udp"  # SNMP
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb:ro
+    environment:
+      - TZ=UTC
+      - SNMP_COMMUNITY_RO=public
+      - SNMP_COMMUNITY_RW=private
+      - BATTERYLEVEL=15
+      - MINUTES=5
+      - WEB_PORT=5000
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

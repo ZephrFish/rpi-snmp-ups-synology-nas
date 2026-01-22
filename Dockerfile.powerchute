@@ -1,0 +1,37 @@
+# Dockerfile for APC PowerChute Serial Shutdown Agent
+# This is the official Schneider Electric UPS management software
+
+FROM rockylinux:9
+
+# Install dependencies
+RUN dnf install -y \
+    unzip \
+    net-snmp \
+    net-snmp-utils \
+    && dnf clean all
+
+# Create installation directory
+RUN mkdir -p /opt/APC
+
+# Copy PowerChute RPM (you'll need to mount or copy the file)
+# COPY pcssagent-*.x86_64.rpm /tmp/
+
+# Install script that handles the RPM installation
+COPY install-powerchute.sh /tmp/install-powerchute.sh
+RUN chmod +x /tmp/install-powerchute.sh
+
+# Copy startup script
+COPY powerchute-entrypoint.sh /usr/local/bin/powerchute-entrypoint.sh
+RUN chmod +x /usr/local/bin/powerchute-entrypoint.sh
+
+# Expose PowerChute web interface port (default 3052 for HTTP, 6547 for shutdown communication)
+EXPOSE 3052
+
+# Expose SNMP
+EXPOSE 161/udp
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD pgrep -f PowerChute || exit 1
+
+ENTRYPOINT ["/usr/local/bin/powerchute-entrypoint.sh"]

@@ -1,0 +1,40 @@
+# Debian/Ubuntu compatible Dockerfile for PowerChute Serial Shutdown
+# Converts RPM package to DEB using alien
+
+FROM debian:bookworm-slim
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies and alien for RPM conversion
+RUN apt-get update && apt-get install -y \
+    alien \
+    net-snmp \
+    net-snmp-utils \
+    libsnmp-dev \
+    wget \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create installation directory
+RUN mkdir -p /opt/APC
+
+# Copy PowerChute RPM (will be mounted or copied)
+# COPY pcssagent-*.x86_64.rpm /tmp/
+
+# Installation and startup scripts
+COPY install-powerchute-deb.sh /tmp/install-powerchute-deb.sh
+RUN chmod +x /tmp/install-powerchute-deb.sh
+
+COPY powerchute-entrypoint-deb.sh /usr/local/bin/powerchute-entrypoint.sh
+RUN chmod +x /usr/local/bin/powerchute-entrypoint.sh
+
+# Expose ports
+EXPOSE 3052 161/udp
+
+WORKDIR /opt/APC/PowerChuteSerialShutdown/Agent
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD pgrep -f PowerChute || exit 1
+
+ENTRYPOINT ["/usr/local/bin/powerchute-entrypoint.sh"]

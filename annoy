@@ -1,0 +1,3 @@
+#!/bin/sh
+# Called periodically while on battery
+echo "UPS on battery for $(apcaccess -p TIMELEFT) minutes remaining" | wall 2>/dev/null || true

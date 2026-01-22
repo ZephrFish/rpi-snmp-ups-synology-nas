@@ -1,0 +1,4 @@
+#!/bin/sh
+# Called when UPS switches to battery power
+echo "Power failure detected at $(date)" >> /var/log/apcupsd-events.log
+apcaccess >> /var/log/apcupsd-events.log

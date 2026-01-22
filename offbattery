@@ -1,0 +1,3 @@
+#!/bin/sh
+# Called when UPS returns to line power
+echo "Power restored at $(date)" >> /var/log/apcupsd-events.log
